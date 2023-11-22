@@ -4,7 +4,7 @@
  * @param {bigint} size - the number of bytes to allocate per entry in the set (default is 128n)
  */
 function IntSet(size) {
-    let INTSIZE = 128n; // bit length of integer
+    let INTSIZE = 64n; // bit length of integer
     if (size) {
         INTSIZE = size;
     }
