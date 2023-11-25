@@ -1,136 +1,148 @@
 const Benchmark = require('benchmark');
 const RandomGenerator = require('@japan-d2/random-bigint').RandomGenerator;
 const IntSet = require('../index.js');
-// const process = require('process');
 
-const random = new RandomGenerator({
-    seed: 123456789n,
-    limit: 2n ** 128n
-});
+const MIN_N = 5n;
+const MAX_N = 15n;
 
-const checkMemory = function checkMemory(e, b) {
-    console.log(`checking memory of ${b}`);
-    let o = {};
-    o.xs = [];
-    o.ys = [];
-    const mid = 2n ** e;
-    const max = 2n * mid;
-    console.log('generating random values');
-    for (let i = 0n; i < mid; i++) {
-        o.xs.push(random.next());
-    }
-    for (let i = mid; i < max; i++) {
-        o.ys.push(random.next());
-    }
+// // [(element_bit_size, max_bit_size, n, ops/sec)]
+// let timingResults = [];
+// // [(element_bit_size, max_bit_size, n, heap_used, total_memory)]
+// let memoryResults = [];
+// {element_bit_size: {max_bit_size: {n: [ops/sec, heap_used, total_memory]}}}
+let results = {};
 
-    console.log('adding random values to sets');
-    let set1 = new IntSet(b);
-    for (const x of o.xs) {
-        set1.add(x);
-    }
-    let set2 = new IntSet(b);
-    for (const y of o.ys) {
-        set2.add(y);
-    }
+const runSuite = ({elements_bit_size, max_bit_size}, onComplete) => {
+    console.log(`running suite with 2^${elements_bit_size} elements, 2^${max_bit_size} max values`);
+    const seed = BigInt(Math.floor(Math.random() * 1000000000));
+    const random = new RandomGenerator({
+        seed,
+        limit: 2n ** max_bit_size
+    });
 
-    delete o.xs;
-    delete o.ys;
-
-    console.log('running suite');
-    gc();
-    set1.union(set2);
-    console.log(`using bit depth ${b}`, process.memoryUsage());
-    gc();
-};
-
-const runSuite = (e) => {
     const suite = new Benchmark.Suite;
+    const elements = 2n ** elements_bit_size;
 
     let xs = [];
     let ys = [];
-    const mid = 2n ** e;
-    const max = 2n * mid;
-    console.log('generating random values');
-    for (let i = 0n; i < mid; i++) {
+    for (let i = 0n; i < elements; i++) {
         xs.push(random.next());
     }
-    for (let i = mid; i < max; i++) {
+    for (let i = 0n; i < elements; i++) {
         ys.push(random.next());
     }
 
-    console.log('adding random values to sets');
-    let set1_32 = new IntSet(32n);
-    for (const x of xs) {
-        set1_32.add(x);
-    }
-    let set2_32 = new IntSet(32n);
-    for (const y of ys) {
-        set2_32.add(y);
-    }
-    let set1_64 = new IntSet(64n);
-    for (const x of xs) {
-        set1_64.add(x);
-    }
-    let set2_64 = new IntSet(64n);
-    for (const y of ys) {
-        set2_64.add(y);
-    }
-    let set1_128 = new IntSet(128n);
-    for (const x of xs) {
-        set1_128.add(x);
-    }
-    let set2_128 = new IntSet(128n);
-    for (const y of ys) {
-        set2_128.add(y);
-    }
-    let set1_256 = new IntSet(256n);
-    for (const x of xs) {
-        set1_256.add(x);
-    }
-    let set2_256 = new IntSet(256n);
-    for (const y of ys) {
-        set2_256.add(y);
-    }
-    let set1_512 = new IntSet(512n);
-    for (const x of xs) {
-        set1_512.add(x);
-    }
-    let set2_512 = new IntSet(512n);
-    for (const y of ys) {
-        set2_512.add(y);
+    const addTest = function addTest(n) {
+        let set1 = new IntSet(n);
+        for (const x of xs) {
+            set1.add(x);
+        }
+        let set2 = new IntSet(n);
+        for (const y of ys) {
+            set2.add(y);
+        }
+        suite.add(`${n}`, function() {
+            set1.union(set2);
+        });
+    };
+
+    for (let i = MIN_N; i <= MAX_N; i++) {
+        addTest(2n ** i);
     }
 
-    console.log('running suite');
-    suite.add(`union 2^${e} #32`, function() {
-        set1_32.union(set2_32);
-    })
-    .add(`union 2^${e} #64`, function() {
-        set1_64.union(set2_64);
-    })
-    .add(`union 2^${e} #128`, function() {
-        set1_128.union(set2_128);
-    })
-    .add(`union 2^${e} #256`, function() {
-        set1_256.union(set2_256);
-    })
-    .add(`union 2^${e} #512`, function() {
-        set1_512.union(set2_512);
-    })
-    .on('cycle', function(event) {
-        console.log(String(event.target));
+    suite.on('cycle', function(event) {
+        // timingResults.push([
+        //     `${elements_bit_size}`,
+        //     `${max_bit_size}`,
+        //     event.target.name,
+        //     event.target.hz
+        // ]);
+        results[`${elements_bit_size}`] ||= {};
+        results[`${elements_bit_size}`][`${max_bit_size}`] ||= {};
+        results[`${elements_bit_size}`][`${max_bit_size}`][event.target.name] = [event.target.hz];
     })
     .on('complete', function() {
         console.log('Fastest is ' + this.filter('fastest').map('name'));
 
-        checkMemory(16n, 32n);
-        checkMemory(16n, 64n);
-        checkMemory(16n, 128n);
-        checkMemory(16n, 256n);
-        checkMemory(16n, 512n);
+        const checkMemory = function checkMemory(n) {
+            let o = {};
+            o.xs = [];
+            o.ys = [];
+            for (let i = 0n; i < elements; i++) {
+                o.xs.push(random.next());
+            }
+            for (let i = 0n; i < elements; i++) {
+                o.ys.push(random.next());
+            }
+
+            let set1 = new IntSet(n);
+            for (const x of o.xs) {
+                set1.add(x);
+            }
+            let set2 = new IntSet(n);
+            for (const y of o.ys) {
+                set2.add(y);
+            }
+
+            delete o.xs;
+            delete o.ys;
+
+            gc();
+            const set3 = set1.union(set2);
+            // memoryResults.push([
+            //     `${elements_bit_size}`,
+            //     `${max_bit_size}`,
+            //     `${n}`,
+            //     process.memoryUsage().heapUsed,
+            //     `${BigInt(set3.entries.size) * n}`
+            // ]);
+            results[`${elements_bit_size}`][`${max_bit_size}`][n].push(process.memoryUsage().heapUsed);
+            results[`${elements_bit_size}`][`${max_bit_size}`][n].push(`${BigInt(set3.entries.size) * n}`);
+            gc();
+        };
+
+        for (let i = MIN_N; i <= MAX_N; i++) {
+            checkMemory(2n ** i);
+        }
+
+        onComplete();
     })
-    // run async
-    .run({ 'async': true });
+        .run({ 'async': true });
 };
 
-// runSuite(8n);
-runSuite(16n);
+let current_bit_size = 8n;
+const MAX_BIT_SIZE = 32n;
+const BIT_SIZE_INCREMENT = 4n;
+
+const fs = require('fs');
+
+const callRunSuite = function callRunSuite() {
+    if (current_bit_size <= MAX_BIT_SIZE) {
+        const last_bit_size = current_bit_size;
+        current_bit_size += BIT_SIZE_INCREMENT;
+        runSuite({elements_bit_size: 16n, max_bit_size: last_bit_size}, callRunSuite);
+    } else {
+        // console.log('timing results', timingResults);
+        // console.log('memory results', memoryResults);
+        // fs.writeFileSync('./timingResults.csv', timingResults.reduce((acc, row) => acc + toCSVRow(row), ''));
+        // fs.writeFileSync('./memoryResults.csv', memoryResults.reduce((acc, row) => acc + toCSVRow(row), ''));
+        console.log(results);
+        let resultsArr = [];
+        for (const e in results) {
+            for (const m in results[e]) {
+                for (const n in results[e][m]) {
+                    resultsArr.push([e,m,n].concat(results[e][m][n]));
+                }
+            }
+        }
+        fs.writeFileSync('./bench/results.csv', resultsArr.reduce((acc, row) => acc + toCSVRow(row), ''));
+        fs.writeFileSync('./bench/results.json', JSON.stringify(results));
+    }
+};
+
+callRunSuite();
+
+
+function toCSVRow(xs) {
+    return xs.map((x) => x.toString()).join(',') + "\n";
+}
