@@ -32,7 +32,8 @@ const runSuite = ({elements_bit_size, max_bit_size}, onComplete) => {
         ys.push(random.next());
     }
 
-    const addTest = function addTest(n) {
+    const addTest = function addTest(i_n) {
+        const n = 2n ** i_n;
         let set1 = new IntSet(n);
         for (const x of xs) {
             set1.add(x);
@@ -41,13 +42,13 @@ const runSuite = ({elements_bit_size, max_bit_size}, onComplete) => {
         for (const y of ys) {
             set2.add(y);
         }
-        suite.add(`${n}`, function() {
+        suite.add(`${i_n}`, function() {
             set1.union(set2);
         });
     };
 
     for (let i = MIN_N; i <= MAX_N; i++) {
-        addTest(2n ** i);
+        addTest(i);
     }
 
     suite.on('cycle', function(event) {
@@ -64,7 +65,8 @@ const runSuite = ({elements_bit_size, max_bit_size}, onComplete) => {
     .on('complete', function() {
         console.log('Fastest is ' + this.filter('fastest').map('name'));
 
-        const checkMemory = function checkMemory(n) {
+        const checkMemory = function checkMemory(i_n) {
+            const n = 2n ** i_n;
             let o = {};
             o.xs = [];
             o.ys = [];
@@ -96,13 +98,14 @@ const runSuite = ({elements_bit_size, max_bit_size}, onComplete) => {
             //     process.memoryUsage().heapUsed,
             //     `${BigInt(set3.entries.size) * n}`
             // ]);
-            results[`${elements_bit_size}`][`${max_bit_size}`][n].push(process.memoryUsage().heapUsed);
-            results[`${elements_bit_size}`][`${max_bit_size}`][n].push(`${BigInt(set3.entries.size) * n}`);
+            console.log(results);
+            results[`${elements_bit_size}`][`${max_bit_size}`][`${i_n}`].push(process.memoryUsage().heapUsed);
+            results[`${elements_bit_size}`][`${max_bit_size}`][`${i_n}`].push(`${BigInt(set3.entries.size) * n}`);
             gc();
         };
 
         for (let i = MIN_N; i <= MAX_N; i++) {
-            checkMemory(2n ** i);
+            checkMemory(i);
         }
 
         onComplete();
