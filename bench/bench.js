@@ -135,7 +135,7 @@ const callRunSuite = function callRunSuite() {
                 }
             }
         }
-        fs.writeFileSync('./bench/results.csv', resultsArr.reduce((acc, row) => acc + toCSVRow(row), ''));
+        fs.writeFileSync('./bench/results.csv', "elements_bit_size,max_bit_size,n,ops_per_sec,heap_used,total_size\n" + resultsArr.map(toCSVRow).join("\n"));
         fs.writeFileSync('./bench/results.json', JSON.stringify(results));
     }
 };
@@ -144,5 +144,5 @@ callRunSuite();
 
 
 function toCSVRow(xs) {
-    return xs.map((x) => x.toString()).join(',') + "\n";
+    return xs.map((x) => x.toString()).join(',');
 }
