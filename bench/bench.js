@@ -15,10 +15,15 @@ let results = {};
 const runSuite = ({elements_bit_size, max_bit_size}, onComplete) => {
     console.log(`running suite with 2^${elements_bit_size} elements, 2^${max_bit_size} max values`);
     const seed = BigInt(Math.floor(Math.random() * 1000000000));
-    const random = new RandomGenerator({
-        seed,
-        limit: 2n ** max_bit_size
-    });
+    // const random = new RandomGenerator({
+    //     seed,
+    //     limit: 2n ** max_bit_size
+    // });
+    const random = {
+        next: function next() {
+            return BigInt(Math.floor(Math.random() * (2 ** Number(max_bit_size))));
+        }
+    };
 
     const suite = new Benchmark.Suite;
     const elements = 2n ** elements_bit_size;
