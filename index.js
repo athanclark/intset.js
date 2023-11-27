@@ -1,10 +1,10 @@
 /**
  * The entry point of an IntSet
  * @constructor
- * @param {bigint} size - the number of bytes to allocate per entry in the set (default is 128n)
+ * @param {bigint} size - the number of bytes to allocate per entry in the set (default is 256n; see {@link https://athanclark.com/blog/intset.html#conclusion|the blog post})
  */
 function IntSet(size) {
-    let INTSIZE = 64n; // bit length of integer
+    let INTSIZE = 256n; // bit length of integer
     if (size) {
         INTSIZE = size;
     }
