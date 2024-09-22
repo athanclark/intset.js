@@ -1,112 +1,66 @@
-/**
- * The entry point of an IntSet
- * @constructor
- * @param {bigint} size - the number of bytes to allocate per entry in the set (default is 256n; see {@link https://athanclark.com/blog/intset.html#conclusion|the blog post})
- */
-function IntSet(size) {
-    let INTSIZE = 256n; // bit length of integer
-    if (size) {
-        INTSIZE = size;
+export default class IntSet {
+    INTSIZE;
+    entries;
+    constructor(size) {
+        this.INTSIZE = size || 256n;
+        this.entries = new Map();
     }
-
-    // returns a single bit
-    const makeMask = function makeMask(x) {
-        return 2n ** (x % INTSIZE);
-    };
-    const makeEntry = function makeEntry(x) {
-        return x / INTSIZE;
-    };
-
-    this.entries = new Map();
-    // this.keys = [];
-
-    /**
-     * Add an element to the set
-     * @method
-     * @param {bigint} x - the element to add
-     */
-    this.add = function addIntSet(x) {
-        const mask = makeMask(x);
-        const entry = makeEntry(x);
+    makeMask(x) {
+        return 2n ** (x % this.INTSIZE);
+    }
+    makeEntry(x) {
+        return x / this.INTSIZE;
+    }
+    add(x) {
+        const mask = this.makeMask(x);
+        const entry = this.makeEntry(x);
         const oldEntry = this.entries.get(entry);
-        if (oldEntry) {
-            this.entries.set(entry, oldEntry | mask);
-        } else {
-            this.entries.set(entry, mask);
-        }
-    };
-
-    /**
-     * Remove an element to the set
-     * @method
-     * @param {bigint} x - the element to remove
-     */
-    this.remove = function removeIntSet(x) {
-        const mask = makeMask(x);
-        const entry = makeEntry(x);
+        this.entries.set(entry, oldEntry ? oldEntry | mask : mask);
+    }
+    remove(x) {
+        const mask = this.makeMask(x);
+        const entry = this.makeEntry(x);
         const oldEntry = this.entries.get(entry);
         if (oldEntry) {
             const newEntry = oldEntry & ~mask;
             if (newEntry === 0n) {
                 this.entries.delete(entry);
-            } else {
+            }
+            else {
                 this.entries.set(entry, newEntry);
             }
         }
-    };
-
-    /**
-     * Does the set contain this element?
-     * @method
-     * @param {bigint} x - the element to query
-     * @returns {boolean}
-     */
-    this.contains = function containsIntSet(x) {
-        const mask = makeMask(x);
-        const entry = makeEntry(x);
+    }
+    contains(x) {
+        const mask = this.makeMask(x);
+        const entry = this.makeEntry(x);
         const oldEntry = this.entries.get(entry);
         if (oldEntry) {
             return (oldEntry | mask) === oldEntry;
-        } else {
+        }
+        else {
             return false;
         }
-    };
-
-    /**
-     * Create a union of two sets
-     * @method
-     * @param {IntSet} xs - the other set
-     * @returns {IntSet}
-     */
-    this.union = function unionIntSet(xs) {
-        let ys = new Map(xs.entries); // cloned
+    }
+    union(xs) {
+        const ys = new Map(xs.entries); // cloned
         for (const [k, v] of this.entries) {
             const old = ys.get(k);
-            if (old) {
-                ys.set(k, old | v);
-            } else {
-                ys.set(k, v);
-            }
+            ys.set(k, old ? old | v : v);
         }
-        let zs = new IntSet();
+        const zs = new IntSet();
         zs.entries = ys;
         return zs;
-    };
-
-    /**
-     * Find an intersection of two sets
-     * @method
-     * @param {IntSet} xs - the other set
-     * @returns {IntSet}
-     */
-    this.intersection = function intersectionIntSet(xs) {
-        let ys = new Map();
+    }
+    intersection(xs) {
+        const ys = new Map();
         let smaller;
         let larger;
         if (this.entries.size < xs.entries.size) {
             smaller = this.entries;
             larger = xs.entries;
-        } else {
+        }
+        else {
             smaller = xs.entries;
             larger = this.entries;
         }
@@ -119,47 +73,24 @@ function IntSet(size) {
         let zs = new IntSet();
         zs.entries = ys;
         return zs;
-    };
-
-    /**
-     * Pull the symmetric difference of two sets
-     * @method
-     * @param {IntSet} xs - the other set
-     * @returns {IntSet}
-     */
-    this.symmetricDifference = function symmetricDifferenceIntSet(xs) {
+    }
+    symmetricDifference(xs) {
         let ys = new Map(xs.entries); // clone
         for (const [k, v] of this.entries) {
             const old = ys.get(k);
-            if (old) {
-                ys.set(k, old ^ v);
-            } else {
-                ys.set(k, v);
-            }
+            ys.set(k, old ? old ^ v : v);
         }
         let zs = new IntSet();
         zs.entries = ys;
         return zs;
-    };
-
-    /**
-     * Subtract the content of one set from this one
-     * @method
-     * @param {IntSet} xs - the set that won't be present in the result
-     * @returns {IntSet}
-     */
-    this.difference = function differenceIntSet(xs) {
+    }
+    difference(xs) {
         return this.intersection(this.symmetricDifference(xs));
-    };
-
-    /**
-     * Turn the contents of the set into an unsorted array
-     * @method
-     * @returns {Array}
-     */
-    this.toArray = function toArrayIntSet() {
-        let result = [];
-        this.entries.forEach(function(entry, entryIndex) {
+    }
+    toArray() {
+        const result = [];
+        const INTSIZE = this.INTSIZE;
+        this.entries.forEach(function (entry, entryIndex) {
             for (let i = 0n; entry !== 0n; i++) {
                 if ((entry & 1n) === 1n) { // if the bit is set
                     result.push(i + (entryIndex * INTSIZE));
@@ -168,19 +99,12 @@ function IntSet(size) {
             }
         });
         return result;
-    };
-
-    /**
-     * Determine whether or not this set is empty
-     * @returns {boolean}
-     */
-    this.isEmpty = function isEmptyIntSet() {
+    }
+    isEmpty() {
         let acc = 0n;
         for (const entry of this.entries.values()) {
             acc = acc | entry;
         }
         return acc === 0n;
-    };
+    }
 }
-
-module.exports = IntSet;

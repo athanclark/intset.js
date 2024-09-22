@@ -1,8 +1,8 @@
-const fc = require('fast-check');
-const assert = require('assert');
-const _ = require('lodash');
+import fc from 'fast-check';
+import assert from 'assert';
+import _ from 'lodash';
 
-const IntSet = require('../index');
+import IntSet from '../index.js';
 
 
 describe('unit tests', () => {
@@ -30,7 +30,7 @@ function mkSet(xs) {
     }
     return set;
 }
-const fcAssert = (p) => fc.assert(p, { numRuns: 10000 });
+const fcAssert = (p) => fc.assert(p, { numRuns: 10000, timeout: 3000 });
 
 const properties = (e) => {
     describe(`properties with max size of 2^${e}`, () => {
