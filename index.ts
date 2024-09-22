@@ -1,7 +1,11 @@
 export default class IntSet {
   private INTSIZE: bigint;
   private entries: Map<bigint, bigint>;
-  
+
+  /**
+   * The entry point of an IntSet
+   * @param size The number of bytes to allocate per entry in the set (default is 128n)
+   */ 
   public constructor(size?: bigint) {
     this.INTSIZE = size || 256n;
     this.entries = new Map();
@@ -14,7 +18,10 @@ export default class IntSet {
   private makeEntry(x: bigint) {
     return x / this.INTSIZE;
   }
-
+  /**
+   * Add an element to the set
+   * @param x The element to add
+   */
   public add(x: bigint) {
     const mask = this.makeMask(x);
     const entry = this.makeEntry(x);
@@ -22,6 +29,11 @@ export default class IntSet {
     this.entries.set(entry, oldEntry ? oldEntry | mask : mask);
   }
 
+  /**
+   * Remove an element to the set
+   * @method
+   * @param x The element to remove
+   */
   public remove(x: bigint) {
     const mask = this.makeMask(x);
     const entry = this.makeEntry(x);
@@ -35,7 +47,10 @@ export default class IntSet {
       }
     }
   }
-
+  /**
+   * Does the set contain this element?
+   * @param x The element to query
+   */
   public contains(x: bigint): boolean {
     const mask = this.makeMask(x);
     const entry = this.makeEntry(x);
@@ -47,6 +62,10 @@ export default class IntSet {
     }
   }
 
+  /**
+   * Create a union of two sets
+   * @param xs The other set
+   */
   public union(xs: IntSet): IntSet {
     const ys = new Map(xs.entries); // cloned
     for (const [k, v] of this.entries) {
@@ -58,6 +77,10 @@ export default class IntSet {
     return zs;
   }
 
+  /**
+   * Find an intersection of two sets
+   * @param xs The other set
+   */
   public intersection(xs: IntSet): IntSet {
     const ys = new Map();
     let smaller;
@@ -80,6 +103,10 @@ export default class IntSet {
     return zs;
   }
 
+  /**
+   * Pull the symmetric difference of two sets
+   * @param xs The other set
+   */
   public symmetricDifference(xs: IntSet): IntSet {
     let ys = new Map(xs.entries); // clone
     for (const [k, v] of this.entries) {
@@ -91,10 +118,31 @@ export default class IntSet {
     return zs;
   }
 
+  /**
+   * Subtract the content of one set from this one
+   * @param xs The set that won't be present in the result
+   */
   public difference(xs: IntSet): IntSet {
-    return this.intersection(this.symmetricDifference(xs));
+    let ys = new Map(this.entries);
+    for (const [k, v] of xs.entries) {
+      const old = ys.get(k);
+      if (old) {
+        const newEntry = old & ~v;
+        if (newEntry === 0n) {
+          ys.delete(k);
+        } else {
+          ys.set(k, newEntry);
+        }
+      }
+    }
+    let zs = new IntSet();
+    zs.entries = ys;
+    return zs;
   }
 
+  /**
+   * Turn the contents of the set into an unsorted array
+   */
   public toArray(): bigint[] {
     const result: bigint[] = [];
     const INTSIZE: bigint = this.INTSIZE;
@@ -109,6 +157,9 @@ export default class IntSet {
     return result;
   }
 
+  /**
+   * Determine whether or not this set is empty
+   */
   public isEmpty(): boolean {
     let acc = 0n;
     for (const entry of this.entries.values()) {
