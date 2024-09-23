@@ -1,23 +1,26 @@
 export default class IntSet {
   private INTSIZE: bigint;
   private entries: Map<bigint, bigint>;
+  private negEntries: Map<bigint, bigint>;
 
   /**
    * The entry point of an IntSet
-   * @param size The number of bytes to allocate per entry in the set (default is 128n)
+   * @param size The number of bytes to allocate per entry in the set (default is 256n)
    */ 
   public constructor(size?: bigint) {
     this.INTSIZE = size || 256n;
     this.entries = new Map();
+    this.negEntries = new Map();
   }
 
   private makeMask(x: bigint) {
-    return 2n ** (x % this.INTSIZE);
+    return 2n ** ((x < 0n ? -x : x) % this.INTSIZE);
   }
 
   private makeEntry(x: bigint) {
-    return x / this.INTSIZE;
+    return (x < 0n ? -x : x) / this.INTSIZE;
   }
+
   /**
    * Add an element to the set
    * @param x The element to add
@@ -25,8 +28,9 @@ export default class IntSet {
   public add(x: bigint) {
     const mask = this.makeMask(x);
     const entry = this.makeEntry(x);
-    const oldEntry = this.entries.get(entry);
-    this.entries.set(entry, oldEntry ? oldEntry | mask : mask);
+    const entries = x < 0n ? this.negEntries : this.entries;
+    const oldEntry = entries.get(entry);
+    entries.set(entry, oldEntry ? oldEntry | mask : mask);
   }
 
   /**
@@ -37,16 +41,18 @@ export default class IntSet {
   public remove(x: bigint) {
     const mask = this.makeMask(x);
     const entry = this.makeEntry(x);
-    const oldEntry = this.entries.get(entry);
+    const entries = x < 0n ? this.negEntries : this.entries;
+    const oldEntry = entries.get(entry);
     if (oldEntry) {
       const newEntry = oldEntry & ~mask;
       if (newEntry === 0n) {
-        this.entries.delete(entry);
+        entries.delete(entry);
       } else {
-        this.entries.set(entry, newEntry);
+        entries.set(entry, newEntry);
       }
     }
   }
+
   /**
    * Does the set contain this element?
    * @param x The element to query
@@ -54,7 +60,8 @@ export default class IntSet {
   public contains(x: bigint): boolean {
     const mask = this.makeMask(x);
     const entry = this.makeEntry(x);
-    const oldEntry = this.entries.get(entry);
+    const entries = x < 0n ? this.negEntries : this.entries;
+    const oldEntry = entries.get(entry);
     if (oldEntry) {
       return (oldEntry | mask) === oldEntry;
     } else {
@@ -67,13 +74,19 @@ export default class IntSet {
    * @param xs The other set
    */
   public union(xs: IntSet): IntSet {
-    const ys = new Map(xs.entries); // cloned
+    const newEntries = new Map(xs.entries); // cloned
     for (const [k, v] of this.entries) {
-      const old = ys.get(k);
-      ys.set(k, old ? old | v : v);
+      const old = newEntries.get(k);
+      newEntries.set(k, old ? old | v : v);
+    }
+    const newNegEntries = new Map(xs.negEntries); // cloned
+    for (const [k, v] of this.negEntries) {
+      const old = newNegEntries.get(k);
+      newNegEntries.set(k, old ? old | v : v);
     }
     const zs = new IntSet();
-    zs.entries = ys;
+    zs.entries = newEntries;
+    zs.negEntries = newNegEntries;
     return zs;
   }
 
@@ -82,24 +95,45 @@ export default class IntSet {
    * @param xs The other set
    */
   public intersection(xs: IntSet): IntSet {
-    const ys = new Map();
-    let smaller;
-    let larger;
-    if (this.entries.size < xs.entries.size) {
-      smaller = this.entries;
-      larger = xs.entries;
-    } else {
-      smaller = xs.entries;
-      larger = this.entries;
-    }
-    for (const [k, v] of smaller) {
-      const v_ = larger.get(k);
-      if (v_) {
-        ys.set(k, v & v_);
-      }
-    }
     let zs = new IntSet();
-    zs.entries = ys;
+    (() => {
+      const newEntries = new Map();
+      let smaller;
+      let larger;
+      if (this.entries.size < xs.entries.size) {
+        smaller = this.entries;
+        larger = xs.entries;
+      } else {
+        smaller = xs.entries;
+        larger = this.entries;
+      }
+      for (const [k, v] of smaller) {
+        const v_ = larger.get(k);
+        if (v_) {
+          newEntries.set(k, v & v_);
+        }
+      }
+      zs.entries = newEntries;
+    })();
+    (() => {
+      const newNegEntries = new Map();
+      let smaller;
+      let larger;
+      if (this.negEntries.size < xs.negEntries.size) {
+        smaller = this.negEntries;
+        larger = xs.negEntries;
+      } else {
+        smaller = xs.negEntries;
+        larger = this.negEntries;
+      }
+      for (const [k, v] of smaller) {
+        const v_ = larger.get(k);
+        if (v_) {
+          newNegEntries.set(k, v & v_);
+        }
+      }
+      zs.negEntries = newNegEntries;
+    })();
     return zs;
   }
 
@@ -108,13 +142,19 @@ export default class IntSet {
    * @param xs The other set
    */
   public symmetricDifference(xs: IntSet): IntSet {
-    let ys = new Map(xs.entries); // clone
-    for (const [k, v] of this.entries) {
-      const old = ys.get(k);
-      ys.set(k, old ? old ^ v : v);
-    }
     let zs = new IntSet();
-    zs.entries = ys;
+    let newEntries = new Map(xs.entries); // clone
+    for (const [k, v] of this.entries) {
+      const old = newEntries.get(k);
+      newEntries.set(k, old ? old ^ v : v);
+    }
+    zs.entries = newEntries;
+    let newNegEntries = new Map(xs.negEntries); // clone
+    for (const [k, v] of this.negEntries) {
+      const old = newNegEntries.get(k);
+      newNegEntries.set(k, old ? old ^ v : v);
+    }
+    zs.negEntries = newNegEntries;
     return zs;
   }
 
@@ -123,20 +163,33 @@ export default class IntSet {
    * @param xs The set that won't be present in the result
    */
   public difference(xs: IntSet): IntSet {
-    let ys = new Map(this.entries);
+    let zs = new IntSet();
+    let newEntries = new Map(this.entries);
     for (const [k, v] of xs.entries) {
-      const old = ys.get(k);
+      const old = newEntries.get(k);
       if (old) {
         const newEntry = old & ~v;
         if (newEntry === 0n) {
-          ys.delete(k);
+          newEntries.delete(k);
         } else {
-          ys.set(k, newEntry);
+          newEntries.set(k, newEntry);
         }
       }
     }
-    let zs = new IntSet();
-    zs.entries = ys;
+    zs.entries = newEntries;
+    let newNegEntries = new Map(this.negEntries);
+    for (const [k, v] of xs.negEntries) {
+      const old = newNegEntries.get(k);
+      if (old) {
+        const newEntry = old & ~v;
+        if (newEntry === 0n) {
+          newNegEntries.delete(k);
+        } else {
+          newNegEntries.set(k, newEntry);
+        }
+      }
+    }
+    zs.negEntries = newNegEntries;
     return zs;
   }
 
@@ -154,6 +207,14 @@ export default class IntSet {
         entry = entry >> 1n;
       }
     });
+    this.negEntries.forEach(function(entry, entryIndex) {
+      for (let i = 0n; entry !== 0n; i++) {
+        if ((entry & 1n) === 1n) { // if the bit is set
+          result.push((i + (entryIndex * INTSIZE)) * -1n);
+        }
+        entry = entry >> 1n;
+      }
+    });
     return result;
   }
 
@@ -163,6 +224,9 @@ export default class IntSet {
   public isEmpty(): boolean {
     let acc = 0n;
     for (const entry of this.entries.values()) {
+      acc = acc | entry;
+    }
+    for (const entry of this.negEntries.values()) {
       acc = acc | entry;
     }
     return acc === 0n;

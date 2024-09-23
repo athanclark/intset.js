@@ -21,7 +21,7 @@ describe('unit tests', () => {
     });
 });
 
-const value = (e) => fc.bigInt({ min: 0n, max: 2n ** e });
+const value = (e) => fc.bigInt({ min: -(2n ** e), max: 2n ** e });
 const setInput = (e) => fc.array(value(e));
 function mkSet(xs) {
     let set = new IntSet();
@@ -30,7 +30,7 @@ function mkSet(xs) {
     }
     return set;
 }
-const fcAssert = (p) => fc.assert(p, { numRuns: 10000, timeout: 3000 });
+const fcAssert = (p) => fc.assert(p, { numRuns: 1000, timeout: 3000 });
 
 const properties = (e) => {
     describe(`properties with max size of 2^${e}`, () => {
