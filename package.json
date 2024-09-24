@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "test": "mocha",
+    "build": "tsc",
     "bench": "node --expose-gc bench/bench.js"
   },
   "repository": {
