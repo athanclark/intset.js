@@ -1,3 +1,7 @@
+/**
+ * An IntSet is a collection of `bigint`s, which can be added or removed, and
+ * new IntSets can me immutably created from one another through set-wise operations.
+ */
 export default class IntSet {
   private INTSIZE: bigint;
   private entries: Map<bigint, bigint>;
