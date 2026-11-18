@@ -1,6 +1,6 @@
 {
   "name": "intset",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "A set implementation for integers",
   "main": "index.js",
   "type": "module",
@@ -34,7 +34,7 @@
     "jsdoc": "^4.0.2",
     "lodash": "^4.17.21",
     "microtime": "^3.1.1",
-    "mocha": "^10.2.0",
+    "mocha": "^11.8.0",
     "typescript": "^5.6.2"
   }
 }

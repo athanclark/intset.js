@@ -268,3 +268,58 @@ properties(10n);
 properties(64n);
 properties(128n);
 properties(256n);
+
+const sortBig = (xs) => [...xs].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+const mkSetSized = (size, xs) => {
+    const set = new IntSet(size);
+    for (const x of xs) set.add(x);
+    return set;
+};
+
+describe('block sizes', () => {
+    it('rejects non-positive sizes', () => {
+        assert.throws(() => new IntSet(0n), RangeError);
+        assert.throws(() => new IntSet(-8n), RangeError);
+    });
+    it('rejects combining sets with different sizes', () => {
+        assert.throws(() => new IntSet(8n).union(new IntSet(16n)), RangeError);
+    });
+    it('keeps custom size through set operations (regression)', () => {
+        const a = mkSetSized(8n, [10n]);
+        const b = mkSetSized(8n, [10n]);
+        assert(a.union(b).contains(10n));
+        assert.deepStrictEqual(a.union(b).toArray(), [10n]);
+    });
+    it('disjoint intersection is empty and stores nothing (regression)', () => {
+        const zs = mkSetSized(256n, [1n]).intersection(mkSetSized(256n, [2n]));
+        assert(zs.isEmpty());
+        assert.deepStrictEqual(zs.toArray(), []);
+    });
+
+    for (const size of [1n, 7n, 64n, 256n]) {
+        describe(`matches built-in Set with size ${size}n`, () => {
+            const ops = {
+                union: (a, b) => new Set([...a, ...b]),
+                intersection: (a, b) => new Set([...a].filter((x) => b.has(x))),
+                difference: (a, b) => new Set([...a].filter((x) => !b.has(x))),
+                symmetricDifference: (a, b) => new Set([
+                    ...[...a].filter((x) => !b.has(x)),
+                    ...[...b].filter((x) => !a.has(x)),
+                ]),
+            };
+            for (const [name, model] of Object.entries(ops)) {
+                it(name, () => {
+                    fcAssert(fc.property(setInput(12n), setInput(12n), (xs, ys) => {
+                        const result = mkSetSized(size, xs)[name](mkSetSized(size, ys));
+                        const expected = sortBig(model(new Set(xs), new Set(ys)));
+                        assert.deepStrictEqual(sortBig(result.toArray()), expected);
+                        assert.strictEqual(result.isEmpty(), expected.length === 0);
+                        for (const x of [...xs, ...ys]) {
+                            assert.strictEqual(result.contains(x), expected.includes(x));
+                        }
+                    }));
+                });
+            }
+        });
+    }
+});

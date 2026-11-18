@@ -1,18 +1,26 @@
+/**
+ * An IntSet is a collection of `bigint`s, which can be added or removed, and
+ * new IntSets can be immutably created from one another through set-wise operations.
+ */
 export default class IntSet {
     INTSIZE;
     entries;
     negEntries;
     /**
      * The entry point of an IntSet
-     * @param size The number of bytes to allocate per entry in the set (default is 256n)
+     * @param size The number of bits stored per internal entry (default is 256n).
+     *   Sets can only be combined with sets of the same size.
      */
-    constructor(size) {
-        this.INTSIZE = size || 256n;
+    constructor(size = 256n) {
+        if (typeof size !== 'bigint' || size <= 0n) {
+            throw new RangeError(`IntSet size must be a positive bigint, got ${String(size)}`);
+        }
+        this.INTSIZE = size;
         this.entries = new Map();
         this.negEntries = new Map();
     }
     makeMask(x) {
-        return 2n ** ((x < 0n ? -x : x) % this.INTSIZE);
+        return 1n << ((x < 0n ? -x : x) % this.INTSIZE);
     }
     makeEntry(x) {
         return (x < 0n ? -x : x) / this.INTSIZE;
@@ -29,7 +37,7 @@ export default class IntSet {
         entries.set(entry, oldEntry ? oldEntry | mask : mask);
     }
     /**
-     * Remove an element to the set
+     * Remove an element from the set
      * @method
      * @param x The element to remove
      */
@@ -57,11 +65,21 @@ export default class IntSet {
         const entry = this.makeEntry(x);
         const entries = x < 0n ? this.negEntries : this.entries;
         const oldEntry = entries.get(entry);
-        if (oldEntry) {
-            return (oldEntry | mask) === oldEntry;
-        }
-        else {
-            return false;
+        return oldEntry !== undefined && (oldEntry & mask) !== 0n;
+    }
+    /**
+     * Create an empty set with the same block size as this one.
+     */
+    emptyLike() {
+        return new IntSet(this.INTSIZE);
+    }
+    /**
+     * Ensure two sets use the same block size, since their internal entries are
+     * only comparable when they do.
+     */
+    assertCompatible(xs) {
+        if (this.INTSIZE !== xs.INTSIZE) {
+            throw new RangeError(`Cannot combine IntSets with different block sizes (${this.INTSIZE} and ${xs.INTSIZE})`);
         }
     }
     /**
@@ -69,19 +87,10 @@ export default class IntSet {
      * @param xs The other set
      */
     union(xs) {
-        const newEntries = new Map(xs.entries); // cloned
-        for (const [k, v] of this.entries) {
-            const old = newEntries.get(k);
-            newEntries.set(k, old ? old | v : v);
-        }
-        const newNegEntries = new Map(xs.negEntries); // cloned
-        for (const [k, v] of this.negEntries) {
-            const old = newNegEntries.get(k);
-            newNegEntries.set(k, old ? old | v : v);
-        }
-        const zs = new IntSet();
-        zs.entries = newEntries;
-        zs.negEntries = newNegEntries;
+        this.assertCompatible(xs);
+        const zs = this.emptyLike();
+        zs.entries = unionEntries(this.entries, xs.entries);
+        zs.negEntries = unionEntries(this.negEntries, xs.negEntries);
         return zs;
     }
     /**
@@ -89,47 +98,10 @@ export default class IntSet {
      * @param xs The other set
      */
     intersection(xs) {
-        let zs = new IntSet();
-        (() => {
-            const newEntries = new Map();
-            let smaller;
-            let larger;
-            if (this.entries.size < xs.entries.size) {
-                smaller = this.entries;
-                larger = xs.entries;
-            }
-            else {
-                smaller = xs.entries;
-                larger = this.entries;
-            }
-            for (const [k, v] of smaller) {
-                const v_ = larger.get(k);
-                if (v_) {
-                    newEntries.set(k, v & v_);
-                }
-            }
-            zs.entries = newEntries;
-        })();
-        (() => {
-            const newNegEntries = new Map();
-            let smaller;
-            let larger;
-            if (this.negEntries.size < xs.negEntries.size) {
-                smaller = this.negEntries;
-                larger = xs.negEntries;
-            }
-            else {
-                smaller = xs.negEntries;
-                larger = this.negEntries;
-            }
-            for (const [k, v] of smaller) {
-                const v_ = larger.get(k);
-                if (v_) {
-                    newNegEntries.set(k, v & v_);
-                }
-            }
-            zs.negEntries = newNegEntries;
-        })();
+        this.assertCompatible(xs);
+        const zs = this.emptyLike();
+        zs.entries = intersectEntries(this.entries, xs.entries);
+        zs.negEntries = intersectEntries(this.negEntries, xs.negEntries);
         return zs;
     }
     /**
@@ -137,19 +109,10 @@ export default class IntSet {
      * @param xs The other set
      */
     symmetricDifference(xs) {
-        let zs = new IntSet();
-        let newEntries = new Map(xs.entries); // clone
-        for (const [k, v] of this.entries) {
-            const old = newEntries.get(k);
-            newEntries.set(k, old ? old ^ v : v);
-        }
-        zs.entries = newEntries;
-        let newNegEntries = new Map(xs.negEntries); // clone
-        for (const [k, v] of this.negEntries) {
-            const old = newNegEntries.get(k);
-            newNegEntries.set(k, old ? old ^ v : v);
-        }
-        zs.negEntries = newNegEntries;
+        this.assertCompatible(xs);
+        const zs = this.emptyLike();
+        zs.entries = xorEntries(this.entries, xs.entries);
+        zs.negEntries = xorEntries(this.negEntries, xs.negEntries);
         return zs;
     }
     /**
@@ -157,35 +120,10 @@ export default class IntSet {
      * @param xs The set that won't be present in the result
      */
     difference(xs) {
-        let zs = new IntSet();
-        let newEntries = new Map(this.entries);
-        for (const [k, v] of xs.entries) {
-            const old = newEntries.get(k);
-            if (old) {
-                const newEntry = old & ~v;
-                if (newEntry === 0n) {
-                    newEntries.delete(k);
-                }
-                else {
-                    newEntries.set(k, newEntry);
-                }
-            }
-        }
-        zs.entries = newEntries;
-        let newNegEntries = new Map(this.negEntries);
-        for (const [k, v] of xs.negEntries) {
-            const old = newNegEntries.get(k);
-            if (old) {
-                const newEntry = old & ~v;
-                if (newEntry === 0n) {
-                    newNegEntries.delete(k);
-                }
-                else {
-                    newNegEntries.set(k, newEntry);
-                }
-            }
-        }
-        zs.negEntries = newNegEntries;
+        this.assertCompatible(xs);
+        const zs = this.emptyLike();
+        zs.entries = differenceEntries(this.entries, xs.entries);
+        zs.negEntries = differenceEntries(this.negEntries, xs.negEntries);
         return zs;
     }
     /**
@@ -216,13 +154,65 @@ export default class IntSet {
      * Determine whether or not this set is empty
      */
     isEmpty() {
-        let acc = 0n;
-        for (const entry of this.entries.values()) {
-            acc = acc | entry;
-        }
-        for (const entry of this.negEntries.values()) {
-            acc = acc | entry;
-        }
-        return acc === 0n;
+        return this.entries.size === 0 && this.negEntries.size === 0;
     }
+}
+// Entry-map helpers. Invariant: no map ever stores a 0n entry, so an entry's
+// presence in a map means at least one element lives in that block.
+function unionEntries(a, b) {
+    const result = new Map(b);
+    for (const [k, v] of a) {
+        const old = result.get(k);
+        result.set(k, old === undefined ? v : old | v);
+    }
+    return result;
+}
+function intersectEntries(a, b) {
+    const [smaller, larger] = a.size < b.size ? [a, b] : [b, a];
+    const result = new Map();
+    for (const [k, v] of smaller) {
+        const other = larger.get(k);
+        if (other !== undefined) {
+            const both = v & other;
+            if (both !== 0n) {
+                result.set(k, both);
+            }
+        }
+    }
+    return result;
+}
+function xorEntries(a, b) {
+    const result = new Map(b);
+    for (const [k, v] of a) {
+        const old = result.get(k);
+        if (old === undefined) {
+            result.set(k, v);
+        }
+        else {
+            const either = old ^ v;
+            if (either === 0n) {
+                result.delete(k);
+            }
+            else {
+                result.set(k, either);
+            }
+        }
+    }
+    return result;
+}
+function differenceEntries(a, b) {
+    const result = new Map(a);
+    for (const [k, v] of b) {
+        const old = result.get(k);
+        if (old !== undefined) {
+            const remaining = old & ~v;
+            if (remaining === 0n) {
+                result.delete(k);
+            }
+            else {
+                result.set(k, remaining);
+            }
+        }
+    }
+    return result;
 }
