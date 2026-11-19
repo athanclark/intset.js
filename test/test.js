@@ -323,3 +323,13 @@ describe('block sizes', () => {
         });
     }
 });
+
+describe('toArray bit boundaries', () => {
+    const xs = [0n, 30n, 31n, 32n, 33n, 63n, 64n, 255n, 256n, 1023n, 1024n, 4095n,
+        -1n, -31n, -32n, -33n, -1024n, 2n ** 70n, -(2n ** 70n)];
+    for (const size of [1n, 31n, 32n, 33n, 64n, 256n, 1024n]) {
+        it(`round-trips edge values with size ${size}n`, () => {
+            assert.deepStrictEqual(sortBig(mkSetSized(size, xs).toArray()), sortBig(xs));
+        });
+    }
+});

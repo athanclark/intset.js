@@ -1,156 +1,127 @@
-const Benchmark = require('benchmark');
-const RandomGenerator = require('@japan-d2/random-bigint').RandomGenerator;
-const IntSet = require('../index.js');
+// Head-to-head benchmark: IntSet vs the built-in Set (number and bigint keys).
+//
+// Run with: npm run bench
+// Writes bench/results.json and prints Markdown tables (median ms; lower is better).
+import { writeFileSync } from 'node:fs';
+import IntSet from '../index.js';
 
-const MIN_N = 5n;
-const MAX_N = 15n;
-
-// // [(element_bit_size, max_bit_size, n, ops/sec)]
-// let timingResults = [];
-// // [(element_bit_size, max_bit_size, n, heap_used, total_memory)]
-// let memoryResults = [];
-// {element_bit_size: {max_bit_size: {n: [ops/sec, heap_used, total_memory]}}}
-let results = {};
-
-const runSuite = ({elements_bit_size, max_bit_size}, onComplete) => {
-    console.log(`running suite with 2^${elements_bit_size} elements, 2^${max_bit_size} max values`);
-    const seed = BigInt(Math.floor(Math.random() * 1000000000));
-    // const random = new RandomGenerator({
-    //     seed,
-    //     limit: 2n ** max_bit_size
-    // });
-    const random = {
-        next: function next() {
-            return BigInt(Math.floor(Math.random() * (2 ** Number(max_bit_size))));
-        }
-    };
-
-    const suite = new Benchmark.Suite;
-    const elements = 2n ** elements_bit_size;
-
-    let xs = [];
-    let ys = [];
-    for (let i = 0n; i < elements; i++) {
-        xs.push(random.next());
-    }
-    for (let i = 0n; i < elements; i++) {
-        ys.push(random.next());
-    }
-
-    const addTest = function addTest(i_n) {
-        const n = 2n ** i_n;
-        let set1 = new IntSet(n);
-        for (const x of xs) {
-            set1.add(x);
-        }
-        let set2 = new IntSet(n);
-        for (const y of ys) {
-            set2.add(y);
-        }
-        suite.add(`${i_n}`, function() {
-            set1.union(set2);
-        });
-    };
-
-    for (let i = MIN_N; i <= MAX_N; i++) {
-        addTest(i);
-    }
-
-    suite.on('cycle', function(event) {
-        // timingResults.push([
-        //     `${elements_bit_size}`,
-        //     `${max_bit_size}`,
-        //     event.target.name,
-        //     event.target.hz
-        // ]);
-        results[`${elements_bit_size}`] ||= {};
-        results[`${elements_bit_size}`][`${max_bit_size}`] ||= {};
-        results[`${elements_bit_size}`][`${max_bit_size}`][event.target.name] = [event.target.hz];
-    })
-    .on('complete', function() {
-        console.log('Fastest is ' + this.filter('fastest').map('name'));
-
-        const checkMemory = function checkMemory(i_n) {
-            const n = 2n ** i_n;
-            let o = {};
-            o.xs = [];
-            o.ys = [];
-            for (let i = 0n; i < elements; i++) {
-                o.xs.push(random.next());
-            }
-            for (let i = 0n; i < elements; i++) {
-                o.ys.push(random.next());
-            }
-
-            let set1 = new IntSet(n);
-            for (const x of o.xs) {
-                set1.add(x);
-            }
-            let set2 = new IntSet(n);
-            for (const y of o.ys) {
-                set2.add(y);
-            }
-
-            delete o.xs;
-            delete o.ys;
-
-            gc();
-            const set3 = set1.union(set2);
-            // memoryResults.push([
-            //     `${elements_bit_size}`,
-            //     `${max_bit_size}`,
-            //     `${n}`,
-            //     process.memoryUsage().heapUsed,
-            //     `${BigInt(set3.entries.size) * n}`
-            // ]);
-            console.log(results);
-            results[`${elements_bit_size}`][`${max_bit_size}`][`${i_n}`].push(process.memoryUsage().heapUsed);
-            results[`${elements_bit_size}`][`${max_bit_size}`][`${i_n}`].push(`${BigInt(set3.entries.size) * n}`);
-            gc();
-        };
-
-        for (let i = MIN_N; i <= MAX_N; i++) {
-            checkMemory(i);
-        }
-
-        onComplete();
-    })
-        .run({ 'async': true });
-};
-
-let current_bit_size = 8n;
-const MAX_BIT_SIZE = 32n;
-const BIT_SIZE_INCREMENT = 4n;
-
-const fs = require('fs');
-
-const callRunSuite = function callRunSuite() {
-    if (current_bit_size <= MAX_BIT_SIZE) {
-        const last_bit_size = current_bit_size;
-        current_bit_size += BIT_SIZE_INCREMENT;
-        runSuite({elements_bit_size: 16n, max_bit_size: last_bit_size}, callRunSuite);
-    } else {
-        // console.log('timing results', timingResults);
-        // console.log('memory results', memoryResults);
-        // fs.writeFileSync('./timingResults.csv', timingResults.reduce((acc, row) => acc + toCSVRow(row), ''));
-        // fs.writeFileSync('./memoryResults.csv', memoryResults.reduce((acc, row) => acc + toCSVRow(row), ''));
-        console.log(results);
-        let resultsArr = [];
-        for (const e in results) {
-            for (const m in results[e]) {
-                for (const n in results[e][m]) {
-                    resultsArr.push([e,m,n].concat(results[e][m][n]));
-                }
-            }
-        }
-        fs.writeFileSync('./bench/results.csv', "elements_bit_size,max_bit_size,n,ops_per_sec,heap_used,total_size\n" + resultsArr.map(toCSVRow).join("\n"));
-        fs.writeFileSync('./bench/results.json', JSON.stringify(results));
-    }
-};
-
-callRunSuite();
-
-
-function toCSVRow(xs) {
-    return xs.map((x) => x.toString()).join(',');
+if (typeof global.gc !== 'function') {
+  console.error('Run with node --expose-gc (npm run bench does this for you).');
+  process.exit(1);
 }
+
+const N = 100_000;
+let sink = 0;
+
+function rng(seed) { // deterministic mulberry32
+  return () => {
+    seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const gen = (range, seed) => {
+  const r = rng(seed);
+  return Array.from({ length: N }, () => Math.floor(r() * range));
+};
+
+function time(fn) {
+  for (let i = 0; i < 3; i++) sink += fn() ? 1 : 0; // warm-up
+  const samples = [];
+  const deadline = performance.now() + 400;
+  while (samples.length < 5 || (performance.now() < deadline && samples.length < 200)) {
+    const t0 = performance.now();
+    sink += fn() ? 1 : 0;
+    samples.push(performance.now() - t0);
+  }
+  samples.sort((a, b) => a - b);
+  return samples[samples.length >> 1]; // median ms
+}
+
+function heapOf(build) {
+  global.gc(); global.gc();
+  const before = process.memoryUsage().heapUsed;
+  const keep = build();
+  global.gc(); global.gc();
+  const after = process.memoryUsage().heapUsed;
+  sink += keep ? 1 : 0;
+  return (after - before) / 1024 / 1024;
+}
+
+const impls = {
+  'Set<number>': {
+    conv: (xs) => xs,
+    build: (xs) => new Set(xs),
+    has: (s, x) => s.has(x),
+    union: (a, b) => a.union(b),
+    intersection: (a, b) => a.intersection(b),
+    difference: (a, b) => a.difference(b),
+    toArray: (s) => [...s],
+  },
+  'Set<bigint>': {
+    conv: (xs) => xs.map(BigInt),
+    build: (xs) => new Set(xs),
+    has: (s, x) => s.has(x),
+    union: (a, b) => a.union(b),
+    intersection: (a, b) => a.intersection(b),
+    difference: (a, b) => a.difference(b),
+    toArray: (s) => [...s],
+  },
+};
+for (const size of [64n, 256n, 1024n]) {
+  impls[`IntSet(${size}n)`] = {
+    conv: (xs) => xs.map(BigInt),
+    build: (xs) => { const s = new IntSet(size); for (const x of xs) s.add(x); return s; },
+    has: (s, x) => s.contains(x),
+    union: (a, b) => a.union(b),
+    intersection: (a, b) => a.intersection(b),
+    difference: (a, b) => a.difference(b),
+    toArray: (s) => s.toArray(),
+  };
+}
+
+const scenarios = [
+  ['dense   (100k values in 0..200k)', 200_000],
+  ['medium  (100k values in 0..10M)', 10_000_000],
+  ['sparse  (100k values in 0..2^40)', 2 ** 40],
+];
+
+const rows = [];
+for (const [label, range] of scenarios) {
+  const xsRaw = gen(range, 1), ysRaw = gen(range, 2), probesRaw = gen(range, 3);
+  for (const [name, im] of Object.entries(impls)) {
+    const xs = im.conv(xsRaw), ys = im.conv(ysRaw), probes = im.conv(probesRaw);
+    const a = im.build(xs), b = im.build(ys);
+    const row = { scenario: label, impl: name };
+    row.build = time(() => im.build(xs));
+    row.has100k = time(() => { let c = 0; for (const p of probes) if (im.has(a, p)) c++; return c; });
+    row.union = time(() => im.union(a, b));
+    row.intersection = time(() => im.intersection(a, b));
+    row.difference = time(() => im.difference(a, b));
+    row.toArray = time(() => im.toArray(a));
+    row.heapMB = heapOf(() => im.build(xs));
+    rows.push(row);
+    process.stderr.write(`done ${label} / ${name}\n`);
+  }
+}
+writeFileSync(new URL('./results.json', import.meta.url), JSON.stringify({
+  node: process.version,
+  date: new Date().toISOString(),
+  n: N,
+  rows,
+}, null, 2) + '\n');
+
+const cols = ['build', 'has100k', 'union', 'intersection', 'difference', 'toArray', 'heapMB'];
+const header = ['build', '100k lookups', 'union', 'intersection', 'difference', 'toArray', 'memory (MB)'];
+let current = '';
+for (const r of rows) {
+  if (r.scenario !== current) {
+    current = r.scenario;
+    console.log(`\n**${current.replace(/\s+/g, ' ')}**\n`);
+    console.log(`| | ${header.join(' | ')} |`);
+    console.log(`|---|${header.map(() => '---:').join('|')}|`);
+  }
+  console.log(`| ${r.impl} | ${cols.map((c) => r[c].toFixed(2)).join(' | ')} |`);
+}
+if (sink < 0) console.log(sink);

@@ -131,23 +131,12 @@ export default class IntSet {
      */
     toArray() {
         const result = [];
-        const INTSIZE = this.INTSIZE;
-        this.entries.forEach(function (entry, entryIndex) {
-            for (let i = 0n; entry !== 0n; i++) {
-                if ((entry & 1n) === 1n) { // if the bit is set
-                    result.push(i + (entryIndex * INTSIZE));
-                }
-                entry = entry >> 1n;
-            }
-        });
-        this.negEntries.forEach(function (entry, entryIndex) {
-            for (let i = 0n; entry !== 0n; i++) {
-                if ((entry & 1n) === 1n) { // if the bit is set
-                    result.push((i + (entryIndex * INTSIZE)) * -1n);
-                }
-                entry = entry >> 1n;
-            }
-        });
+        for (const [entryIndex, entry] of this.entries) {
+            pushSetBits(result, entry, entryIndex * this.INTSIZE, 1n);
+        }
+        for (const [entryIndex, entry] of this.negEntries) {
+            pushSetBits(result, entry, entryIndex * this.INTSIZE, -1n);
+        }
         return result;
     }
     /**
@@ -215,4 +204,23 @@ function differenceEntries(a, b) {
         }
     }
     return result;
+}
+/**
+ * Push `sign * (base + i)` onto `result` for every set bit `i` of `entry`.
+ *
+ * Rather than shifting the bigint one bit at a time (which allocates a new
+ * bigint per bit), the entry is converted to hex once and scanned in 32-bit
+ * chunks, jumping directly between set bits with `Math.clz32`.
+ */
+function pushSetBits(result, entry, base, sign) {
+    const hex = entry.toString(16);
+    for (let end = hex.length, chunkIndex = 0; end > 0; end -= 8, chunkIndex++) {
+        let word = parseInt(hex.slice(Math.max(0, end - 8), end), 16);
+        while (word !== 0) {
+            const lowest = word & -word;
+            const bit = 31 - Math.clz32(lowest);
+            result.push(sign * (base + BigInt(chunkIndex * 32 + bit)));
+            word ^= lowest;
+        }
+    }
 }
